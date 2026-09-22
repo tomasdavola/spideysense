@@ -1,0 +1,12 @@
+[package]
+name = "df-stream"
+version = "0.1.0"
+edition = "2021"
+description = "DeepFilterNet3 as a stdin->stdout PCM filter (mono f32le @ 48 kHz, 480-sample hops)"
+
+[dependencies]
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", tag = "v0.5.6", features = ["tract", "default-model"] }
+ndarray = "0.15"
+
+[profile.release]
+opt-level = 3

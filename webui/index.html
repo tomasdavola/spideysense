@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spidey Sense</title>
+<link href="/static/fonts.css" rel="stylesheet">
+<script src="/static/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #07090d; --panel: #0d1117; --line: rgba(255,255,255,.07); --text: #e6ebf0; --dim: #7b8794;
+    --sound: 46,230,166; --gaze: 255,181,71; --listen: 143,211,255; --alert: 255,92,92;
+    --sans: 'Inter', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans);
+         -webkit-font-smoothing: antialiased; overflow: hidden; }
+  #app { height: 100vh; display: grid; grid-template-rows: 52px 1fr 150px;
+         grid-template-columns: 1fr 364px; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 0 22px;
+           border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; }
+  header h1 b { color: rgb(var(--sound)); font-weight: 600; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--dim); }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+  .pill.live i { background: rgb(var(--sound)); box-shadow: 0 0 10px rgba(var(--sound),.8); }
+  #legend { margin-left: auto; display: flex; gap: 16px; font-size: 11.5px; color: var(--dim); }
+  #legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  #legend .s::before { background: rgb(var(--sound)); } #legend .g::before { background: rgb(var(--gaze)); } #legend .l::before { background: rgb(var(--listen)); }
+
+  #scene { position: relative; overflow: hidden; }
+  #scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; user-select: none; }
+  #hint { position: absolute; left: 22px; bottom: 14px; font-size: 11.5px; color: var(--dim); pointer-events: none; line-height: 1.6; }
+
+  aside { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .card { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .k { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-weight: 500; }
+  .v { font: 600 34px/1.1 var(--mono); margin-top: 4px; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v small { font-size: 16px; color: var(--dim); font-weight: 500; }
+  .sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .meter { height: 3px; background: var(--line); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: rgb(var(--sound)); transition: width .25s ease-out; }
+  #bearing .v { color: rgb(var(--sound)); }
+  #bearing.quiet .v { color: var(--dim); }
+  #listen .v { color: rgb(var(--listen)); font-size: 22px; }
+  .lvl { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin-top: 12px; font-size: 10.5px; color: var(--dim); letter-spacing: .06em; text-transform: uppercase; }
+  .lvl .meter { margin: 0; } .lvl .meter i { transition: width .12s linear; } #lvEars { background: rgb(var(--listen)); }
+  .seg { display: flex; gap: 4px; margin-top: 10px; }
+  .seg button, .btn { flex: 1; background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 6px;
+        padding: 6px 8px; font: 500 11.5px var(--sans); cursor: pointer; letter-spacing: .04em; transition: all .15s; }
+  .seg button:hover, .btn:hover { color: var(--text); border-color: rgba(255,255,255,.18); }
+  .seg button.on { background: rgba(var(--listen),.14); color: rgb(var(--listen)); border-color: rgba(var(--listen),.4); }
+  #mute.on { background: rgba(var(--alert),.14); color: rgb(var(--alert)); border-color: rgba(var(--alert),.4); }
+  .btn.on { background: rgba(var(--gaze),.14); color: rgb(var(--gaze)); border-color: rgba(var(--gaze),.4); }
+
+  #feed { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 8px; }
+  #feed::-webkit-scrollbar { width: 0; }
+  .utt { display: grid; grid-template-columns: 48px 1fr; gap: 10px; align-items: start; font-size: 13px; line-height: 1.4;
+         opacity: 0; transform: translateY(-6px); animation: in .35s ease-out forwards; }
+  @keyframes in { to { opacity: 1; transform: none; } }
+  .utt .az { font: 500 11px var(--mono); color: var(--dim); padding-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .utt.beam .az { color: rgb(var(--listen)); }
+  .utt.beam { color: var(--text); } .utt:not(.beam) { color: #a7b1bc; }
+  .utt.name, .utt.danger { background: rgba(var(--alert),.1); border: 1px solid rgba(var(--alert),.35); border-radius: 8px; padding: 8px 10px; color: var(--text); }
+  .utt.name .az { color: rgb(var(--alert)); }
+  #empty { color: var(--dim); font-size: 12.5px; }
+  #me { color: rgb(var(--gaze)); cursor: pointer; border-bottom: 1px dashed rgba(var(--gaze),.5); font-weight: 500; }
+  #lstate { text-transform: none; letter-spacing: 0; } #lstate.off { color: rgb(var(--alert)); } #lstate.on { display: none; }
+
+  #banner { position: absolute; left: 50%; top: 18px; transform: translate(-50%, -140%); padding: 12px 18px; border-radius: 10px;
+            background: rgba(var(--alert),.14); border: 1px solid rgba(var(--alert),.5); color: #fff; font-weight: 500; font-size: 14px;
+            backdrop-filter: blur(8px); transition: transform .35s cubic-bezier(.2,.9,.3,1.2), opacity .3s; opacity: 0; white-space: nowrap; }
+  #banner.show { transform: translate(-50%, 0); opacity: 1; }
+  #banner b { color: rgb(var(--alert)); font-weight: 600; letter-spacing: .08em; font-size: 11px; text-transform: uppercase; margin-right: 10px; }
+
+  .card.row { padding-bottom: 12px; }
+  .card.row .seg { margin-top: 8px; gap: 6px; }
+  .card.row .seg button { padding: 5px 8px; font-size: 11px; white-space: nowrap; }
+  kbd { font: 500 10px var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 5px; }
+  #hint kbd { margin-left: 0; margin-right: 2px; }
+
+  #hist { grid-column: 1 / -1; border-top: 1px solid var(--line); position: relative; }
+  #hist canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #hist .k { position: absolute; left: 22px; bottom: 8px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1><b>Spidey</b> Sense</h1>
+    <span class="pill" id="status"><i></i><span>connecting</span></span>
+    <span class="pill" id="tally"></span>
+    <div id="legend"><span class="s">sound</span><span class="g">gaze</span><span class="l">listening</span></div>
+  </header>
+
+  <div id="scene">
+    <canvas id="polar"></canvas>
+    <div id="banner"><b>Alert</b><span></span></div>
+    <div id="hint">click the room to listen there<br><kbd>R</kbd> re-zero &nbsp;<kbd>F</kbd> follow gaze &nbsp;<kbd>M</kbd> mute &nbsp;<kbd>A</kbd> test alarm</div>
+  </div>
+
+  <aside>
+    <div class="card" id="bearing"><div class="k">sound from</div><div class="v">—</div>
+      <div class="sub">waiting for audio</div><div class="meter"><i></i></div></div>
+    <div class="card" id="listen"><div class="k">listening</div><div class="v">—</div><div class="sub">beam.py not running</div>
+      <div class="lvl"><span>room</span><div class="meter"><i id="lvRoom"></i></div><span>in your ears</span><div class="meter"><i id="lvEars"></i></div>
+        <span title="loud + tonal + steady must all hold; the bar fills as the streak builds">alarm</span><div class="meter"><i id="lvHaz"></i></div></div>
+      <div class="sub" id="hazd">detector: —</div>
+      <div class="seg" id="modes"><button data-m="mask">Mask</button><button data-m="mvdr">MVDR</button><button data-m="ds">DS</button><button data-m="off">Off</button></div>
+      <div class="seg"><button class="btn" id="follow">Follow gaze</button><button class="btn" id="nn">NN repair</button><button class="btn" id="rz" title="face North, then press">Re-zero</button><button class="btn" id="rec" title="records what you hear + the raw 4-ch input to rec/">Record</button></div>
+      <div class="seg"><button class="btn" id="gdn">Gain −</button><button class="btn" id="gup">Gain +</button><button class="btn" id="haz" title="run the hazard break-in without a real alarm">Test alarm</button><button class="btn on" id="alarm" title="detect smoke alarms / sirens and break in. Turn off if a beeper in the room keeps tripping it">Alarm</button><button class="btn" id="bang" title="also break in on a single loud bang (shots, glass, slams). Off by default: applause counts too">Bangs</button></div></div>
+    <div class="card row"><div class="k">transcript <span id="lstate" class="off">· listen.py not running</span></div>
+      <div class="sub">alerts when someone says <b id="me" title="click to change">…</b></div>
+      <div class="seg"><button id="mute" title="pause the transcript while you narrate">Mute<kbd>M</kbd></button></div></div>
+    <div id="feed"><div id="empty">nothing heard yet</div></div>
+  </aside>
+
+  <div id="hist"><canvas id="wf"></canvas><div class="k">bearing · time</div></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const UP = 0;                                    // compass bearing drawn at 12 o'clock (N up)
+const SHARPEN = 3;                             // display-only power law on the SRP ring (4 mics = broad lobe)
+const rad = a => (a - UP) * Math.PI / 180;       // compass -> screen angle (0 = up, clockwise)
+const wrap = d => ((d + 540) % 360) - 180;
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const C = { sound: css('--sound'), gaze: css('--gaze'), listen: css('--listen'), alert: css('--alert') };
+const rgba = (c, a) => `rgba(${c},${a})`;
+const MONO = css('--mono'), SANS = css('--sans');
+
+// ---- live state (targets from SSE) and display state (eased every frame) -------------------
+const S = {
+  ring: new Float32Array(360), disp: new Float32Array(360),
+  az: 270, dAz: 270, active: false, glow: 0,
+  sources: [], dSources: [],
+  gaze: null, dGaze: null, gazeTarget: null, gazeHit: null, gazeT: null, me: [0, 0],
+  beam: { running: false }, dBeam: null, beamOn: 0,
+  hazard: 0, pulses: [], t: 0,
+  geo: { cx: 0, cy: 0, R: 0, r0: 0 },
+};
+const ease = (cur, tgt, k) => cur + (tgt - cur) * k;
+const easeAz = (cur, tgt, k) => (cur + wrap(tgt - cur) * k + 360) % 360;
+
+// ---- scene ---------------------------------------------------------------------------------
+const polar = $('#polar'), pc = polar.getContext('2d');
+const radial = d3.lineRadial().curve(d3.curveCatmullRomClosed.alpha(0.5)).context(pc);
+let W = 0, H = 0, dpr = 1;
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  const s = $('#scene').getBoundingClientRect();
+  W = s.width; H = s.height;
+  polar.width = W * dpr; polar.height = H * dpr;
+  const h = $('#hist').getBoundingClientRect();
+  wf.width = h.width * dpr; wf.height = h.height * dpr;
+  wfAxis();
+}
+window.addEventListener('resize', resize);
+
+function drawScene() {
+  pc.setTransform(dpr, 0, 0, dpr, 0, 0);
+  pc.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = (H - 36) / 2 + 6, R = Math.min(W, H - 60) * 0.40, r0 = R * 0.16;   // leaves room for the hint
+  S.geo = { cx, cy, R, r0 };                                                                    // click-to-steer uses this
+
+  // floor: vignette, rings, spokes
+  const bg = pc.createRadialGradient(cx, cy, r0, cx, cy, R * 1.5);
+  bg.addColorStop(0, 'rgba(255,255,255,0.035)'); bg.addColorStop(1, 'rgba(255,255,255,0)');
+  pc.fillStyle = bg; pc.fillRect(0, 0, W, H);
+  pc.strokeStyle = 'rgba(255,255,255,0.07)'; pc.lineWidth = 1;
+  for (const k of [0.33, 0.66, 1]) { pc.beginPath(); pc.arc(cx, cy, r0 + (R - r0) * k, 0, 7); pc.stroke(); }
+  pc.strokeStyle = 'rgba(255,255,255,0.045)';
+  for (let a = 0; a < 360; a += 30) {
+    const t = rad(a); pc.beginPath();
+    pc.moveTo(cx + r0 * Math.sin(t), cy - r0 * Math.cos(t)); pc.lineTo(cx + R * Math.sin(t), cy - R * Math.cos(t)); pc.stroke();
+  }
+  pc.fillStyle = '#5c6875'; pc.font = `500 11px ${MONO}`; pc.textAlign = 'center'; pc.textBaseline = 'middle';
+  for (const [lab, a] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]]) {
+    const t = rad(a); pc.fillText(lab, cx + (R + 22) * Math.sin(t), cy - (R + 22) * Math.cos(t));
+  }
+
+  // listening wedge (beam.py target), soft-edged; red + wide open under a hazard
+  if (S.beamOn > 0.01 && S.dBeam !== null) {
+    const hz = S.hazard, col = hz > 0.01 ? C.alert : C.listen;
+    const half = (S.beam.width || 25) * Math.PI / 180 * (1 - hz) + Math.PI * hz;
+    const t = rad(S.dBeam);
+    const g = pc.createRadialGradient(cx, cy, r0 * 0.6, cx, cy, R);
+    g.addColorStop(0, rgba(col, 0.22 * S.beamOn)); g.addColorStop(1, rgba(col, 0.02 * S.beamOn));
+    pc.fillStyle = g; pc.beginPath(); pc.moveTo(cx, cy);
+    pc.arc(cx, cy, R, t - Math.PI / 2 - half, t - Math.PI / 2 + half); pc.closePath(); pc.fill();
+    if (hz < 0.5) {
+      pc.strokeStyle = rgba(col, 0.9 * S.beamOn); pc.lineWidth = 1.5; pc.setLineDash([2, 6]);
+      pc.beginPath(); pc.moveTo(cx + r0 * Math.sin(t), cy - r0 * Math.cos(t)); pc.lineTo(cx + R * Math.sin(t), cy - R * Math.cos(t)); pc.stroke();
+      pc.setLineDash([]);
+      pc.beginPath(); pc.arc(cx + R * Math.sin(t), cy - R * Math.cos(t), 5, 0, 7);
+      pc.strokeStyle = rgba(col, S.beamOn); pc.lineWidth = 2; pc.stroke();
+    }
+  }
+
+  // sound ring: a smooth closed curve through the eased SRP-PHAT power
+  const pts = Array.from(S.disp, (v, i) => [rad(i), r0 + v * (R - r0)]);
+  pc.save(); pc.translate(cx, cy);
+  const ga = 0.14 + 0.28 * S.glow;
+  const rg = pc.createRadialGradient(0, 0, r0, 0, 0, R);
+  rg.addColorStop(0, rgba(C.sound, 0.03)); rg.addColorStop(0.55, rgba(C.sound, ga * 0.35)); rg.addColorStop(1, rgba(C.sound, ga));
+  pc.shadowColor = rgba(C.sound, 0.55 * S.glow); pc.shadowBlur = 28 * S.glow;
+  pc.beginPath(); radial(pts); pc.fillStyle = rg; pc.fill();
+  pc.shadowBlur = 0;
+  pc.strokeStyle = rgba(C.sound, 0.35 + 0.55 * S.glow); pc.lineWidth = 1.5; pc.stroke();
+  pc.restore();
+
+  // sources: primary at the tracked bearing, secondaries dimmer
+  for (const src of S.dSources) {
+    const t = rad(src.az), r = r0 + src.v * (R - r0);
+    const x = cx + r * Math.sin(t), y = cy - r * Math.cos(t);
+    pc.fillStyle = rgba(C.sound, 0.55 * src.a); pc.beginPath(); pc.arc(x, y, 4, 0, 7); pc.fill();
+  }
+  {
+    const t = rad(S.dAz), r = r0 + S.disp[Math.round(S.dAz) % 360] * (R - r0);
+    const x = cx + r * Math.sin(t), y = cy - r * Math.cos(t);
+    const halo = 14 + 4 * Math.sin(S.t / 380);
+    const hg = pc.createRadialGradient(x, y, 0, x, y, halo);
+    hg.addColorStop(0, rgba(C.sound, 0.55 * S.glow)); hg.addColorStop(1, rgba(C.sound, 0));
+    pc.fillStyle = hg; pc.beginPath(); pc.arc(x, y, halo, 0, 7); pc.fill();
+    pc.fillStyle = rgba(C.sound, 0.35 + 0.65 * S.glow); pc.beginPath(); pc.arc(x, y, 5, 0, 7); pc.fill();
+    pc.fillStyle = '#fff'; pc.beginPath(); pc.arc(x, y, 1.8, 0, 7); pc.fill();
+  }
+
+  // alert pulses: an expanding arc toward the source
+  S.pulses = S.pulses.filter(p => S.t - p.t0 < 1400);
+  for (const p of S.pulses) {
+    const k = d3.easeCubicOut((S.t - p.t0) / 1400), t = p.az === null ? 0 : rad(p.az), half = p.az === null ? Math.PI : 0.5;
+    pc.strokeStyle = rgba(p.col, 0.8 * (1 - k)); pc.lineWidth = 3 * (1 - k) + 1;
+    pc.beginPath(); pc.arc(cx, cy, r0 + k * (R * 1.08 - r0), t - Math.PI / 2 - half, t - Math.PI / 2 + half); pc.stroke();
+  }
+
+  // gaze: the ray starts where the wearer SITS (S.me, metres east/north of the array),
+  // not at the array. ROOM_M metres = the ring radius. It ends at the source it crosses
+  // (gaze_hit, at gaze_t m from the array) or LOOK_M out if it hits nothing.
+  const ROOM_M = 3, LOOK_M = 3;
+  const px = (ex, ny) => {                                   // metres (east, north) -> pixels
+    const b = Math.atan2(ex, ny), r = Math.min(Math.hypot(ex, ny) / ROOM_M, 1.02) * R;
+    return [cx + r * Math.sin(b - UP * Math.PI / 180), cy - r * Math.cos(b - UP * Math.PI / 180)];
+  };
+  // you: always shown at your seat, whether or not a gaze source is connected
+  {
+    const [mx, my] = px(S.me[0], S.me[1]);
+    pc.fillStyle = rgba(C.gaze, 1); pc.beginPath(); pc.arc(mx, my, 5, 0, 7); pc.fill();
+    pc.strokeStyle = rgba(C.gaze, 0.5); pc.lineWidth = 1.5; pc.beginPath(); pc.arc(mx, my, 9, 0, 7); pc.stroke();
+    pc.font = `500 11px ${SANS}`; pc.textAlign = 'left'; pc.textBaseline = 'middle';
+    pc.fillStyle = rgba(C.gaze, 0.9); pc.fillText('you', mx + 14, my);
+    pc.fillStyle = rgba(255, 255, 255, 0.35); pc.font = `500 10.5px ${SANS}`; pc.textAlign = 'right';
+    pc.fillText(`${ROOM_M} m`, cx + R - 6, cy + R * 0.02 - 12);   // the outer ring's scale
+  }
+  if (S.dGaze !== null) {
+    const [mx, my] = px(S.me[0], S.me[1]);
+    const g = S.dGaze * Math.PI / 180;
+    let ex, ny;
+    if (S.gazeHit !== null && S.gazeT !== null) {             // end on the source it crosses
+      const f = S.gazeHit * Math.PI / 180; ex = S.gazeT * Math.sin(f); ny = S.gazeT * Math.cos(f);
+    } else { ex = S.me[0] + LOOK_M * Math.sin(g); ny = S.me[1] + LOOK_M * Math.cos(g); }
+    const [x, y] = px(ex, ny);
+    const t = Math.atan2(x - mx, -(y - my));                    // screen heading of the drawn ray
+    pc.strokeStyle = rgba(C.gaze, 0.9); pc.lineWidth = 2.5; pc.lineCap = 'round';
+    pc.shadowColor = rgba(C.gaze, 0.6); pc.shadowBlur = 12;
+    pc.beginPath(); pc.moveTo(mx, my); pc.lineTo(x, y); pc.stroke();
+    pc.shadowBlur = 0;
+    const h = 14, w = 7; pc.fillStyle = rgba(C.gaze, 1); pc.beginPath();
+    pc.moveTo(x + h * Math.sin(t), y - h * Math.cos(t));
+    pc.lineTo(x + w * Math.cos(t), y + w * Math.sin(t)); pc.lineTo(x - w * Math.cos(t), y - w * Math.sin(t)); pc.closePath(); pc.fill();
+    if (S.gazeHit !== null) {                                   // ring the source being looked at
+      pc.strokeStyle = rgba(C.gaze, 0.8); pc.lineWidth = 2; pc.beginPath(); pc.arc(x, y, 11, 0, 7); pc.stroke();
+    }
+  }
+
+  // the array + you, at the centre
+  pc.fillStyle = 'rgba(255,255,255,0.7)';
+  for (const [x, y] of [[0, -1], [-1, 0], [0, 1], [1, 0]]) { pc.beginPath(); pc.arc(cx + x * 7, cy + y * 7, 1.6, 0, 7); pc.fill(); }
+  pc.strokeStyle = 'rgba(255,255,255,0.18)'; pc.lineWidth = 1; pc.beginPath(); pc.arc(cx, cy, r0 * 0.5, 0, 7); pc.stroke();
+}
+
+// time constants (ms) so motion feels the same at 60 Hz and 120 Hz
+const TAU = { ring: 60, az: 110, glow: 200, gaze: 40, beam: 100, hazard: 130, src: 90 };
+function tick(now) {
+  const dt = Math.min(50, now - S.t || 16); S.t = now;
+  const k = {}; for (const [n, tau] of Object.entries(TAU)) k[n] = 1 - Math.exp(-dt / tau);
+  for (let i = 0; i < 360; i++) S.disp[i] = ease(S.disp[i], S.ring[i], k.ring);
+  S.dAz = easeAz(S.dAz, S.az, k.az);
+  S.glow = ease(S.glow, S.active ? 1 : 0, k.glow);
+  if (S.gaze === null) S.dGaze = null; else S.dGaze = S.dGaze === null ? S.gaze : easeAz(S.dGaze, S.gaze, k.gaze);
+  const hz = !!S.beam.hazard;                       // webui.py keeps this set while the beam is forced off
+  const bOn = S.beam.running && (S.beam.mode !== 'off' || hz);
+  S.beamOn = ease(S.beamOn, bOn ? 1 : 0, k.beam);
+  if (bOn) S.dBeam = S.dBeam === null ? S.beam.az : easeAz(S.dBeam, S.beam.az, k.beam);
+  S.hazard = ease(S.hazard, hz ? 1 : 0, k.hazard);
+  // secondaries: ease toward the reported set, fade out ones that vanished
+  for (const s of S.sources) {
+    const m = S.dSources.find(d => Math.abs(wrap(d.az - s.az)) < 30 && !d.hit);
+    if (m) { m.az = easeAz(m.az, s.az, k.src); m.v = ease(m.v, s.str, k.src); m.a = ease(m.a, 1, k.src); m.hit = true; }
+    else S.dSources.push({ az: s.az, v: s.str, a: 0, hit: true });
+  }
+  for (const d of S.dSources) { if (!d.hit) d.a = ease(d.a, 0, k.src); d.hit = false; }
+  S.dSources = S.dSources.filter(d => d.a > 0.02 && Math.abs(wrap(d.az - S.dAz)) > 12);
+  drawScene();
+  requestAnimationFrame(tick);
+}
+
+// ---- waterfall: bearing vs time, newest at the right --------------------------------------
+const wf = $('#wf'), wc = wf.getContext('2d');
+const row = a => 0.06 + 0.88 * (((a - UP + 360) % 360) / 360);
+function wfAxis() {
+  wc.setTransform(1, 0, 0, 1, 0, 0);
+  wc.fillStyle = '#07090d'; wc.fillRect(0, 0, wf.width, wf.height);
+}
+let wfN = 0;
+function wfPush(f) {
+  const w = wf.width, h = wf.height, col = 2 * dpr;
+  wc.setTransform(1, 0, 0, 1, 0, 0);
+  wc.drawImage(wf, -col, 0);
+  wc.fillStyle = '#07090d'; wc.fillRect(w - col, 0, col, h);
+  if (++wfN % 107 === 0) { wc.fillStyle = 'rgba(255,255,255,0.18)'; wc.fillRect(w - col, h - 7 * dpr, dpr, 7 * dpr); }   // ~5 s
+  const a = f.active ? 1 : 0.35;
+  for (let i = 0; i < 360; i += 2) {
+    const v = Math.pow(f.power[i], SHARPEN); if (v < 0.3) continue;
+    wc.fillStyle = rgba(C.sound, Math.pow((v - 0.3) / 0.7, 1.5) * 0.85 * a);
+    wc.fillRect(w - col, row(i) * h, col, Math.max(1, h / 180));
+  }
+  if (f.active) { wc.fillStyle = '#fff'; wc.fillRect(w - col, row(f.az) * h - dpr, col, 2 * dpr); }
+  if (S.beamOn > 0.5 && S.dBeam !== null) { wc.fillStyle = rgba(S.hazard > 0.5 ? C.alert : C.listen, 0.9); wc.fillRect(w - col, row(S.dBeam) * h, col, dpr); }
+  if (S.dGaze !== null) { wc.fillStyle = rgba(C.gaze, 0.9); wc.fillRect(w - col, row(S.dGaze) * h, col, dpr); }
+  for (const [lab, a] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]]) {
+    wc.fillStyle = '#07090d'; wc.fillRect(0, row(a) * h - 8 * dpr, 20 * dpr, 16 * dpr);
+    wc.fillStyle = '#5c6875'; wc.font = `500 ${10 * dpr}px ${MONO}`; wc.textBaseline = 'middle';
+    wc.fillText(lab, 6 * dpr, row(a) * h);
+  }
+}
+function wfTick(az, col) {          // an utterance landed: a dot at its bearing, now
+  wc.setTransform(1, 0, 0, 1, 0, 0);
+  wc.fillStyle = rgba(col, 0.95); wc.fillRect(wf.width - 4 * dpr, row(az) * wf.height - 2 * dpr, 4 * dpr, 4 * dpr);
+}
+function wfMark(col) {
+  wc.setTransform(1, 0, 0, 1, 0, 0);
+  wc.fillStyle = rgba(col, 0.7); wc.fillRect(wf.width - 2 * dpr, 0, 2 * dpr, wf.height);
+}
+
+// ---- stream handlers ----------------------------------------------------------------------
+const HAZ = { loud: 8, tonal: 0.8, stable: 30 };   // mirrors webui.py defaults; refreshed from /haz
+fetch('/haz').then(r => r.json()).then(h => Object.assign(HAZ, h)).catch(() => {});
+let lastFrameAt = 0;
+setInterval(() => { if (lastFrameAt && Date.now() - lastFrameAt > 2000 && $('#status').classList.contains('live')) { $('#status').className = 'pill'; $('#status span').textContent = 'no audio — is the array plugged in?'; } }, 500);
+function onFrame(f) {
+  if (!$('#status').classList.contains('live')) { $('#status').className = 'pill live'; $('#status span').textContent = 'live'; }
+  lastFrameAt = Date.now();
+  for (let i = 0; i < 360; i++) S.ring[i] = Math.pow(f.power[i], SHARPEN); S.az = f.az; S.active = f.active; S.sources = f.sources;
+  const b = $('#bearing'); b.classList.toggle('quiet', !f.active);
+  b.querySelector('.v').innerHTML = !f.active ? '—' : `${f.az.toFixed(0)}<small>°</small>`;
+  b.querySelector('.sub').textContent = !f.active ? 'quiet' : f.R >= 0.85 ? 'steady' : 'moving';
+  b.querySelector('.meter i').style.width = `${f.active ? f.R * 100 : 0}%`;
+  $('#lvRoom').style.width = `${pct(f.level)}%`;
+  $('#lstate').className = f.listen ? 'on' : 'off';
+  if (f.haz && f.haz.over !== undefined) {
+    const h = f.haz, c = (ok) => ok ? 'ok' : 'no';
+    $('#lvHaz').style.width = `${Math.min(100, h.score / h.trig * 100)}%`;
+    $('#bang').classList.toggle('on', !!h.bang);
+    $('#alarm').classList.toggle('on', !!h.alarm);
+    $('#hazd').innerHTML = `detector: <b class="${c(h.over > HAZ.loud)}">${h.over >= 0 ? '+' : ''}${h.over.toFixed(0)} dB</b> · <b class="${c(h.tonal > HAZ.tonal)}">tonal ${h.tonal.toFixed(2)}</b> · <b class="${c(h.moved <= HAZ.stable)}">${h.moved <= HAZ.stable ? 'steady' : 'moving ' + h.moved}</b> · ${h.score.toFixed(0)}/${h.trig}`;
+  }
+  wfPush(f);
+}
+function onHat(h) {
+  S.gaze = h.gaze ?? null;   // last known gaze survives a tracker dropout
+  S.gazeTarget = h.gaze_target ?? null; S.gazeHit = h.gaze_hit ?? null; S.gazeT = h.gaze_t ?? null;
+  if (h.me) S.me = h.me;   // sent with every gaze event, connected or not
+  $('#rz').textContent = h.connected ? 'Re-zero' : 'No gaze';
+}
+const pct = db => Math.max(0, Math.min(100, (db + 60) / 50 * 100));   // -60..-10 dBFS
+function onBeam(b) {
+  S.beam = b;
+  $('#lvEars').style.width = `${b.running && b.mode !== 'off' ? pct(b.nn ? b.nn_out_db : b.out_db) : b.running ? pct(b.out_db) : 0}%`;
+  const el = $('#listen');
+  el.querySelector('.v').innerHTML = b.running ? `${b.az.toFixed(0)}<small>°</small> <small>${b.mode.toUpperCase()}${b.nn ? ' + NN' : ''}</small>` : '—';
+  el.querySelector('.sub').textContent = !b.running ? 'beam.py not running'
+    : b.hazard ? `noise cancelling OFF — ${b.hazard.what || 'alarm'}`
+    : `${b.gain_db.toFixed(0)} dB${b.follow ? ' · following gaze' : ''}${b.underruns ? ` · ${b.underruns} underruns` : ''}${b.nn_error ? ` · ${b.nn_error}` : ''}`;
+  document.querySelectorAll('#modes button').forEach(x => x.classList.toggle('on', b.running && x.dataset.m === b.mode));
+  $('#follow').classList.toggle('on', !!b.follow);
+  $('#nn').classList.toggle('on', !!b.nn);
+  const rb = $('#rec');
+  if (rb) {
+    rb.classList.toggle('on', !!b.rec);
+    if (b.rec) rb.textContent = `Rec ${Math.round(b.rec_secs || 0)} s`;
+    else if (rb.dataset.was === '1') { rb.textContent = 'Saved ✓'; setTimeout(() => { if (!S.beam.rec) rb.textContent = 'Record'; }, 2000); }
+    else if (rb.textContent !== 'Saved ✓') rb.textContent = 'Record';
+    rb.dataset.was = b.rec ? '1' : '0';
+  }
+}
+const tally = { heard: 0, missed: 0 }, seen = new Set();
+function onUtt(u) {
+  if (seen.has(u.t)) return;                       // the stream replays recent lines on reconnect
+  seen.add(u.t);
+  $('#empty')?.remove();
+  if (u.in_beam !== null) { tally[u.in_beam ? 'heard' : 'missed']++; $('#tally').textContent = `${tally.heard} heard · ${tally.missed} missed`; }
+  wfTick(u.az, u.in_beam ? C.listen : '255,255,255');
+  const d = document.createElement('div');
+  d.className = 'utt' + (u.in_beam ? ' beam' : '') + (u.name ? ' name' : '') + (u.danger ? ' danger' : '');
+  d.innerHTML = `<span class="az"></span><span></span>`;
+  d.firstChild.textContent = `${u.az.toFixed(0)}°`;
+  d.lastChild.textContent = u.text;
+  $('#feed').prepend(d);
+  while ($('#feed').children.length > 60) $('#feed').lastChild.remove();
+}
+let bannerT = 0;
+function onAlert(a) {
+  const col = a.kind === 'hazard' ? C.alert : C.gaze;
+  S.pulses.push({ t0: performance.now(), az: a.az ?? null, col });
+  wfMark(col);
+  const b = $('#banner');
+  b.querySelector('b').textContent = a.kind === 'hazard' ? ({ shout: 'Danger', bang: 'Bang' }[a.sub] || 'Alarm') : 'Your name';
+  b.querySelector('span').textContent = a.kind === 'hazard' ? `noise cancelling off — ${a.text || 'listen to the room'}`
+    : `someone at ${a.az?.toFixed(0) ?? '?'}° said your name — “${a.text}”`;
+  b.classList.add('show'); clearTimeout(bannerT); bannerT = setTimeout(() => b.classList.remove('show'), 6000);
+}
+
+let muted = false;
+$('#mute').onclick = () => fetch(`/mute?on=${muted ? 0 : 1}`);
+$('#me').onclick = () => {
+  const name = window.prompt('Your name (comma-separate aliases, e.g. "Sam,Sammy")', $('#me').textContent);
+  if (name !== null && name.trim()) fetch('/me?name=' + encodeURIComponent(name.trim()));
+};
+function onMe(n) { $('#me').textContent = n; }
+function onMute(m) { muted = m; $('#mute').classList.toggle('on', m); $('#mute').firstChild.textContent = m ? 'Muted' : 'Mute'; }
+
+// ---- controls -----------------------------------------------------------------------------
+function clickAz(e) {
+  const r = polar.getBoundingClientRect(), x = e.clientX - r.left - S.geo.cx, y = e.clientY - r.top - S.geo.cy;
+  return (Math.atan2(x, -y) * 180 / Math.PI + UP + 360) % 360;
+}
+polar.addEventListener('click', e => fetch(`/steer?az=${clickAz(e).toFixed(0)}`));
+document.querySelectorAll('#modes button').forEach(b => b.onclick = () => fetch(`/mode?m=${b.dataset.m}`));
+$('#follow').onclick = () => fetch(`/follow?on=${S.beam.follow ? 0 : 1}`);
+$('#nn').onclick = () => fetch(`/nn?on=${S.beam.nn ? 0 : 1}`);
+$('#rec').onclick = () => fetch(`/rec?on=${S.beam.rec ? 0 : 1}`);
+$('#rz').onclick = () => { fetch('/rezero'); const b = $('#rz'); b.textContent = 'Zeroed ✓'; b.classList.add('on'); setTimeout(() => { b.classList.remove('on'); }, 1500); };
+$('#gdn').onclick = () => fetch(`/gain?db=${(S.beam.gain_db ?? 20) - 3}`);
+$('#gup').onclick = () => fetch(`/gain?db=${(S.beam.gain_db ?? 20) + 3}`);
+$('#haz').onclick = () => fetch('/hazard');
+$('#bang').onclick = () => fetch(`/haz?bang=${$('#bang').classList.contains('on') ? 0 : 1}`);
+$('#alarm').onclick = () => fetch(`/haz?alarm=${$('#alarm').classList.contains('on') ? 0 : 1}`);
+window.addEventListener('keydown', e => {
+  if (e.key === 'r') fetch('/rezero');
+  if (e.key === 'f') $('#follow').click();
+  if (e.key === 'm') $('#mute').click();
+  if (e.key === 'a') fetch('/hazard');            // test the hazard break-in
+});
+
+// ---- stream -------------------------------------------------------------------------------
+const es = new EventSource('/stream');
+es.onopen = () => { $('#status').className = 'pill live'; $('#status span').textContent = 'live'; };
+es.onerror = () => { $('#status').className = 'pill'; $('#status span').textContent = 'stream lost — is webui.py running?'; };
+es.onmessage = e => onFrame(JSON.parse(e.data));
+es.addEventListener('hat', e => onHat(JSON.parse(e.data)));
+es.addEventListener('beam', e => onBeam(JSON.parse(e.data)));
+es.addEventListener('utt', e => onUtt(JSON.parse(e.data)));
+es.addEventListener('alert', e => onAlert(JSON.parse(e.data)));
+es.addEventListener('mute', e => onMute(JSON.parse(e.data)));
+es.addEventListener('me', e => onMe(JSON.parse(e.data)));
+
+resize(); requestAnimationFrame(tick);
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.playwright-mcp/
+tools/df-stream/target/
+.DS_Store
+logs/
+names.json
+me.txt
+*.wav
+calibration/calib.json
+calibration/mics.json
+rec/
