@@ -26,9 +26,8 @@ single mic −0.6 dB → MVDR 2.1 dB → mask 10.3 dB → mask + DeepFilterNet 1
 
 ## Hardware
 
-- Four microphones in a diamond, roughly 10–15 cm across. Cheap cardioid vocal mics work if you
-  point them at the ceiling (aimed outward, half the compass sits in a null). Get the bodies off
-  the table — structure-borne sound arrives before the air path and corrupts every delay.
+- Four microphones in a diamond, roughly 10–15 cm across. Cheap cardioid vocal mics work. Get the bodies off
+  the table or dampened — structure-borne sound arrives before the air path and corrupts every delay.
 - A 4-input audio interface. Developed on a Zoom AMS-44; anything CoreAudio/PortAudio sees as
   one 4-channel device works. Set `SPIDEY_DEVICE` to a substring of its name.
 - Wired earbuds or headphones. Bluetooth adds 150–300 ms and reads as broken.
