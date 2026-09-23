@@ -163,3 +163,5 @@ Four mics give you nulls, not a narrow beam: real-room rejection from MVDR alone
 because of reverb; the mask is what gets to 10–18 dB. Direction finding is only unambiguous
 below the spatial-alias limit (~1.4 kHz on a 12 cm array). Reverb is the ceiling on everything.
 Gyro-only yaw drifts; re-zero often or use a source with a magnetometer.
+
+* Commit history was overwritten for privacy of recorded test files
