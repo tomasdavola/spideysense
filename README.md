@@ -1,5 +1,9 @@
 # Spidey Sense
 
+> [!TIP]
+> ## 🥇 **We won the Healthcare track at HackMIT 2026!!**
+> HackMIT is one of the most prestigious collegiate hackathons, and hundreds of teams competed! This is our second year winning a main track.
+
 Directional noise cancelling with a four-microphone array. Point it at one person and you
 hear only them; everything else in the room is suppressed. Direction comes from wherever
 you're looking, from a click on a live map of the room, or from the array's own tracking of
